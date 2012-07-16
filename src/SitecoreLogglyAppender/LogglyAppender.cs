@@ -27,13 +27,15 @@ namespace SitecoreLogglyAppender
             }
             catch (Exception e)
             {
-                ErrorHandler.Error("Failed to creating JSON", e);
+                ErrorHandler.Error("Failed creating JSON", e);
 
                 return;
             }
-            
-            var request = BuildRequest();
 
+            var request = (HttpWebRequest)WebRequest.Create(Url);
+
+            request.Method = "POST";
+            request.ContentType = BodyFormatter.ContentType;
             request.BeginGetRequestStream(r =>
                                               {
                                                   try
@@ -72,16 +74,6 @@ namespace SitecoreLogglyAppender
                                                       ErrorHandler.Error("Failed to connect", e);
                                                   }
                                               }, null);
-        }
-
-        private HttpWebRequest BuildRequest()
-        {
-            var request = (HttpWebRequest)WebRequest.Create(Url);
-
-            request.Method = "POST";
-            request.ContentType = BodyFormatter.ContentType;
-            
-            return request;
         }
     }
 }

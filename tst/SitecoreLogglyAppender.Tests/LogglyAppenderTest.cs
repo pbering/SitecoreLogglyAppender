@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Configuration;
-using System.IO;
-using System.Net;
-using System.Web.Script.Serialization;
 using System.Xml;
 using NUnit.Framework;
 using log4net;
@@ -24,112 +20,63 @@ namespace SitecoreLogglyAppender.Tests
             _logger = LogManager.GetLogger(typeof(LogglyAppenderTest));
         }
 
-        private void Run(Action action, int timeout)
-        {
-            var handle = action.BeginInvoke(null, null);
-
-            if (handle.AsyncWaitHandle.WaitOne(timeout))
-            {
-                action.EndInvoke(handle);
-
-                return;
-            }
-
-            Assert.Fail("Failed to complete in the timeout specified.");
-        }
-
         [Test]
         public void should_log_error_on_exception()
         {
             //// Arrange
-            Action test = () =>
-                              {
-                                  using (var listener = new HttpListener())
-                                  {
-                                      listener.Prefixes.Add("http://localhost:42421/");
-                                      listener.Start();
+            Action request = () =>
+                                 {
+                                     try
+                                     {
+                                         throw new Exception("My Exception Message");
+                                     }
+                                     catch (Exception e)
+                                     {
+                                         _logger.Error("My Error Message", e);
+                                     }
+                                 };
 
-                                      try
-                                      {
-                                          throw new Exception("MyExceptionMessage");
-                                      }
-                                      catch (Exception e)
-                                      {
-                                          //// Act
-                                          _logger.Error("MyErrorMessage", e);
-                                      }
+            //// Act
+            var result = new HttpServer("http://localhost:42421/").WaitFor(request, 1000);
 
-                                      listener.IgnoreWriteExceptions = true;
+            //// Assert
+            Assert.That(result.TimedOut, Is.False, "Timed out");
 
-                                      var context = listener.GetContext();
+            foreach (var key in result.Json.Keys)
+            {
+                Console.WriteLine("{0}: {1}", key, result.Json[key]);
+            }
 
-                                      using (var reader = new StreamReader(context.Request.InputStream))
-                                      {
-                                          var body = reader.ReadToEnd();
-                                          var serializer = new JavaScriptSerializer();
-                                          var dictionary = serializer.Deserialize<Dictionary<string, object>>(body);
-
-                                          foreach (var key in dictionary.Keys)
-                                          {
-                                              Console.WriteLine("{0}: {1}", key, dictionary[key]);
-                                          }
-
-                                          //// Assert
-                                          Assert.That(context.Request.ContentType, Is.EqualTo("application/json"));
-                                          Assert.That(dictionary["level"], Is.EqualTo("ERROR"));
-                                          Assert.That(dictionary["message"], Is.EqualTo("MyErrorMessage"));
-                                          Assert.That(dictionary["machine"], Is.EqualTo(Environment.MachineName));
-                                          Assert.That(dictionary["exception"], Is.StringContaining("MyExceptionMessage"));
-                                      }
-
-                                      context.Response.StatusCode = 200;
-                                      context.Response.Close();
-                                  }
-                              };
-
-            Run(test, 1000);
+            Assert.That(result.ContentType, Is.EqualTo("application/json"));
+            Assert.That(result.HttpMethod, Is.EqualTo("POST"));
+            Assert.That(result.Json["level"], Is.EqualTo("ERROR"));
+            Assert.That(result.Json["message"], Is.EqualTo("My Error Message"));
+            Assert.That(result.Json["machine"], Is.EqualTo(Environment.MachineName));
+            Assert.That(result.Json["exception"], Is.StringContaining("Exception: System.Exception").And.StringContaining("Message: My Exception Message"));
         }
 
         [Test]
         public void should_log_information()
         {
             //// Arrange
-            Action test = () =>
-                              {
-                                  using (var listener = new HttpListener())
-                                  {
-                                      listener.Prefixes.Add("http://localhost:42421/");
-                                      listener.Start();
+            Action request = () => _logger.Info("My Information Message");
 
-                                      //// Act
-                                      _logger.Info("MyInformationMessage");
+            //// Act
+            var result = new HttpServer("http://localhost:42421/").WaitFor(request, 1000);
 
-                                      var context = listener.GetContext();
+            //// Assert
+            Assert.That(result.TimedOut, Is.False, "Timed out");
 
-                                      using (var reader = new StreamReader(context.Request.InputStream))
-                                      {
-                                          var body = reader.ReadToEnd();
-                                          var serializer = new JavaScriptSerializer();
-                                          var dictionary = serializer.Deserialize<Dictionary<string, object>>(body);
+            foreach (var key in result.Json.Keys)
+            {
+                Console.WriteLine("{0}: {1}", key, result.Json[key]);
+            }
 
-                                          foreach (var key in dictionary.Keys)
-                                          {
-                                              Console.WriteLine("{0}: {1}", key, dictionary[key]);
-                                          }
-
-                                          //// Assert
-                                          Assert.That(context.Request.ContentType, Is.EqualTo("application/json"));
-                                          Assert.That(dictionary["level"], Is.EqualTo("INFO"));
-                                          Assert.That(dictionary["message"], Is.EqualTo("MyInformationMessage"));
-                                          Assert.That(dictionary["machine"], Is.EqualTo(Environment.MachineName));
-                                      }
-
-                                      context.Response.StatusCode = 200;
-                                      context.Response.Close();
-                                  }
-                              };
-
-            Run(test, 1000);
+            Assert.That(result.ContentType, Is.EqualTo("application/json"));
+            Assert.That(result.HttpMethod, Is.EqualTo("POST"));
+            Assert.That(result.Json["level"], Is.EqualTo("INFO"));
+            Assert.That(result.Json["message"], Is.EqualTo("My Information Message"));
+            Assert.That(result.Json["machine"], Is.EqualTo(Environment.MachineName));
         }
     }
 }
